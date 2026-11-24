@@ -1,0 +1,80 @@
+========================================================================
+STAGE 1 - Notebook bug fixes (no retraining needed)
+Project: UKM Live Notulen - Code-Switching ASR (Indonesia + English)
+File changed: UKM_Live_Notulen_ASR_(2).ipynb
+========================================================================
+
+GOAL OF THIS STAGE
+------------------
+Clean up the training/eval/export notebook so a top-to-bottom "Run all"
+in Colab produces correct, warning-free output and a believable live demo.
+No model retraining and no change to the core method.
+
+WHAT WAS FIXED
+--------------
+
+Fix 1 - Streaming hallucination loop (cell: "## 8. Simulasi Streaming")
+  Problem: on silence/near-silence, Whisper produced a repeat loop
+           ("The original version was based on the original version...").
+  Fix:     added speech_sec() helper that reuses the c0 VAD to measure how
+           many seconds of real speech a segment contains. Whisper is now
+           only called when a segment has >= 0.5 s of speech, and empty
+           transcripts are dropped. This applies to both PARTIAL and FINAL
+           segments (mid-loop and tail).
+
+Fix 2 - NameError on standalone re-run (cell: "## 11. Mode Terjemahan",
+         full pipeline cell)
+  Problem: cell failed with "NameError: name 'TEST_SETS' is not defined"
+           when run on its own after a runtime restart.
+  Fix:     guard with `if "TEST_SETS" in globals()`; otherwise fall back to
+           loading 5 FLEURS id_id test samples. Cell is now self-contained.
+
+Fix 4 - forced_decoder_ids conflict warning (cell: "## 5. Baseline")
+  Problem: "You have passed task=transcribe, but also have set
+           forced_decoder_ids ... which creates a conflict."
+  Fix:     in load_whisper(), set
+             mdl.generation_config.forced_decoder_ids = None
+             mdl.config.forced_decoder_ids = None
+           Language/task are now set the modern way via generate() args.
+
+Fix 5 - "attention mask is not set" warning (cell 19, transcribe())
+  Problem: decode could be unreliable and printed a warning on every call.
+  Fix:     pass attention_mask to generate() when the feature extractor
+           provides it.
+
+BONUS (bundled with fixes 4/5, cell 19)
+  Added a shared GEN_KW dict used by both evaluate() and the streaming
+  simulation, with anti-hallucination decode args:
+    repetition_penalty=1.2, no_repeat_ngram_size=3,
+    no_speech_threshold=0.6, logprob_threshold=-1.0
+
+CELLS TOUCHED
+-------------
+  - Cell 19  : load_whisper(), transcribe(), new GEN_KW   (Fix 4, 5, bonus)
+  - Cell 27  : simulate_stream(), new speech_sec()        (Fix 1)
+  - Cell 42  : full translation pipeline guard            (Fix 2)
+
+KNOWN LIMITATION LEFT OPEN (not a regression)
+---------------------------------------------
+  In the streaming cell, the partial-latency summary line divides by the
+  mean of partial latencies. If a run produces ZERO partials (e.g. an
+  all-silence input after Fix 1), that line will error. Normal speech input
+  always produces partials, so standard use is fine.
+
+NOT DONE IN THIS STAGE (candidates for later)
+---------------------------------------------
+  - Fix 3: the 13-vs-12 MFCC speaker experiment is inconclusive (both score
+    1.000 on the easy LibriSpeech fallback). Needs harder test conditions or
+    real UKM speaker recordings to actually demonstrate the thesis.
+  - Collect/add real UKM meeting recordings (the actual target domain).
+  - Confirm the HF repo jennigwen/whisper-base-ukm-codeswitch is real vs
+    placeholder.
+  - Build the browser web app (Next.js + Transformers.js on Vercel).
+
+HOW THIS WAS VERIFIED
+---------------------
+  - Notebook JSON re-validated (loads cleanly).
+  - git diff is minimal: 4 cells, ~45 insertions / ~12 deletions.
+  - NOT executed here (no GPU/Colab). Re-run in Colab to confirm outputs.
+
+========================================================================
